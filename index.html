@@ -356,7 +356,7 @@
     function normalizeKey(str) {
       if (!str) return '';
       let clean = str.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      clean = clean.replace(/[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|g|kg|dkg|l|ml|dcl|bal|balenie)?)$/i, '').trim();
+      clean = clean.replace(/[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|kus|kusy|kusov|g|gramov|kg|kil|kila|kilo|kíl|dkg|deka|l|liter|litre|litrov|ml|dcl|bal|balenie|balenia|balení)?)$/i, '').trim();
       return clean;
     }
 
@@ -366,7 +366,7 @@
       let amount = (rawAmount || '').trim();
 
       if (!amount) {
-        const match = title.match(/^(.*?)[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|g|kg|dkg|l|ml|dcl|bal|balenie)?)$/i);
+        const match = title.match(/^(.*?)[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|kus|kusy|kusov|g|gramov|kg|kil|kila|kilo|kíl|dkg|deka|l|liter|litre|litrov|ml|dcl|bal|balenie|balenia|balení)?)$/i);
         if (match && match[1].trim().length > 0) {
           title = match[1].trim();
           amount = match[2].trim();
@@ -471,6 +471,61 @@
       rememberTitle(parsed.title);
     }
 
+    function addEntries(parts, amount, store) {
+      if (parts.length === 1) {
+        addOne(parts[0], amount || '', store || '');
+      } else {
+        parts.forEach(p => addOne(p, '', store || ''));
+      }
+    }
+
+    // Diktovanie: mobil nevloží čiarky, preto "mlieko chlieb vajcia 10" rozdelíme podľa slov.
+    // Číslo (a jednotka) ostane pri predchádzajúcej veci, prídavné meno ide s ďalším slovom,
+    // tovar z viacerých slov, ktorý už appka pozná, ostane pokope.
+    const VOICE_UNIT = /^(ks|kus|kusy|kusov|g|gramov|kg|kil|kila|kilo|kíl|dkg|deka|l|liter|litre|litrov|ml|dcl|bal|balenie|balenia|balení)$/i;
+    const VOICE_NUM = /^\d+(?:[.,]\d+)?$/;
+    const VOICE_ADJ = /(ý|á|é|í|ie)$/i;
+    function splitVoice(transcript) {
+      const known = new Set(masterOrder.map(m => m.key));
+      const result = [];
+      splitEntries(transcript).forEach(segment => {
+        const w = segment.split(/\s+/).filter(Boolean);
+        let i = 0;
+        while (i < w.length) {
+          // číslo pred tovarom ("10 rožkov", "2 kg múky") – presunieme ho za tovar
+          let lead = [];
+          if (VOICE_NUM.test(w[i]) && i + 1 < w.length) {
+            lead.push(w[i]); i++;
+            if (i + 1 < w.length && VOICE_UNIT.test(w[i])) { lead.push(w[i]); i++; }
+          }
+          let len = 0;
+          // najdlhší známy tovar (max 4 slová)
+          for (let n = Math.min(4, w.length - i); n >= 2; n--) {
+            if (known.has(normalizeKey(w.slice(i, i + n).join(' ')))) { len = n; break; }
+          }
+          if (!len) {
+            len = 1;
+            while (i + len < w.length && VOICE_ADJ.test(w[i + len - 1]) && !VOICE_NUM.test(w[i + len])) len++;
+          }
+          let part = w.slice(i, i + len);
+          i += len;
+          if (lead.length) {
+            part = part.concat(lead);
+          } else if (i < w.length && VOICE_NUM.test(w[i])) {
+            part.push(w[i]); i++;
+            if (i < w.length && VOICE_UNIT.test(w[i])) { part.push(w[i]); i++; }
+          }
+          // samotné číslo bez tovaru pripojíme k predchádzajúcej položke
+          if (VOICE_NUM.test(part[0]) && result.length) {
+            result[result.length - 1] += ' ' + part.join(' ');
+          } else {
+            result.push(part.join(' '));
+          }
+        }
+      });
+      return result;
+    }
+
     function addItem() {
       const nameInput = document.getElementById('item-name');
       const amountInput = document.getElementById('item-amount');
@@ -479,13 +534,7 @@
       const rawTitle = nameInput.value.trim();
       if (!rawTitle) return;
 
-      const parts = splitEntries(rawTitle);
-      if (parts.length === 1) {
-        addOne(parts[0], amountInput.value, storeInput.value.trim());
-      } else {
-        parts.forEach(p => addOne(p, '', storeInput.value.trim()));
-      }
-
+      addEntries(splitEntries(rawTitle), amountInput.value, storeInput.value.trim());
       nameInput.value = '';
       amountInput.value = '';
       storeInput.value = '';
@@ -527,7 +576,7 @@
       const m = value.match(/^(.*(?:,|;|\s+a\s+))?\s*([^,;]*)$/i);
       const prefix = m && m[1] ? m[1] : '';
       const lastPart = m ? m[2] : value;
-      const amountMatch = lastPart.match(/[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|g|kg|dkg|l|ml|dcl|bal|balenie)?)$/i);
+      const amountMatch = lastPart.match(/[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|kus|kusy|kusov|g|gramov|kg|kil|kila|kilo|kíl|dkg|deka|l|liter|litre|litrov|ml|dcl|bal|balenie|balenia|balení)?)$/i);
       input.value = prefix + (prefix ? ' ' : '') + title + (amountMatch ? ' ' + amountMatch[1] : '');
       addItem();
     }
@@ -948,8 +997,9 @@
         recognition.onresult = function(event) {
           const transcript = event.results[0][0].transcript;
           if (transcript) {
-            document.getElementById('item-name').value = transcript;
-            addItem();
+            addEntries(splitVoice(transcript), '', '');
+            updateSuggestions();
+            renderList();
           }
         };
         recognition.onerror = function(event) { console.warn('Speech error:', event.error); };
