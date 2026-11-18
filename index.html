@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Nakup</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Nakup">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="description" content="Prehľadný nákupný zoznam s veľkým písmom">
+  <!-- Tailwind CSS (pevná verzia, aby ju vedel uložiť offline) -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+  <!-- SortableJS -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+
+  <style>
+    .touch-none {
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .sortable-ghost {
+      opacity: 0.35;
+      background: #e0e7ff !important;
+      border: 2px dashed #4f46e5 !important;
+    }
+    .sortable-drag {
+      box-shadow: 0 16px 32px rgba(0,0,0,0.18);
+      transform: scale(1.02);
+    }
+    .safe-bottom {
+      padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    }
+    .safe-top {
+      padding-top: max(1rem, env(safe-area-inset-top));
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen font-sans flex flex-col">
+
+  <!-- Prihlásenie -->
+  <div id="login" class="fixed inset-0 z-[60] bg-slate-100 flex items-center justify-center p-5">
+    <div class="w-full max-w-sm text-center">
+      <div class="w-20 h-20 rounded-3xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/30 text-white mx-auto mb-4">
+        <i class="ph-bold ph-shopping-cart-simple text-4xl"></i>
+      </div>
+      <h1 class="text-2xl font-extrabold tracking-tight text-slate-900">Nákupný zoznam</h1>
+      <p id="login-msg" class="text-sm font-medium text-slate-500 mt-1">Načítavam…</p>
+      <form id="login-form" class="hidden mt-5 space-y-3">
+        <input type="email" id="login-email" placeholder="E-mail" autocomplete="username" required
+          class="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3.5 text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20">
+        <input type="password" id="login-pass" placeholder="Heslo" autocomplete="current-password" required
+          class="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3.5 text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20">
+        <button type="submit" class="w-full py-3.5 rounded-2xl bg-indigo-600 active:bg-indigo-700 text-white text-base font-bold shadow-md shadow-indigo-600/30">Prihlásiť sa</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Hlásenie -->
+  <div id="toast" class="hidden fixed top-24 inset-x-0 z-[70] max-w-md mx-auto px-4">
+    <div id="toast-text" class="bg-slate-900 text-white text-sm font-semibold rounded-2xl px-4 py-3 shadow-xl text-center"></div>
+  </div>
+
+  <!-- Horná lišta -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 safe-top px-4 py-3.5 shadow-sm">
+    <div class="max-w-md mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-600/20 text-white">
+          <i class="ph-bold ph-shopping-cart-simple text-2xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-extrabold tracking-tight text-slate-900">Nákupný zoznam</h1>
+          <p class="text-sm font-medium text-slate-500"><span id="header-counter">0 položiek na nákup</span><span id="offline-badge" class="hidden ml-1.5 text-amber-600 font-bold">· offline</span></p>
+        </div>
+      </div>
+      <!-- Tlačidlá akcií -->
+      <div class="flex items-center gap-2">
+        <button id="toggle-reorder-btn" type="button" title="Režim posúvania" class="w-11 h-11 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 flex items-center justify-center transition border border-slate-200">
+          <i class="ph-bold ph-arrows-down-up text-xl"></i>
+        </button>
+        <button id="menu-btn" type="button" title="Možnosti" class="w-11 h-11 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 flex items-center justify-center transition border border-slate-200">
+          <i class="ph-bold ph-dots-three-vertical text-2xl"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Rozbaľovacie menu -->
+  <div id="more-menu" class="hidden fixed inset-x-0 top-20 z-50 max-w-md mx-auto px-4">
+    <div class="bg-white border border-slate-200 rounded-2xl p-2.5 shadow-2xl space-y-1.5">
+      <button id="clear-completed-btn" type="button" class="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold rounded-xl text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition">
+        <i class="ph-bold ph-check-circle text-emerald-600 text-2xl"></i>
+        <span>Vyčistiť vybavené (v košíku)</span>
+      </button>
+      <button id="clear-all-btn" type="button" class="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold rounded-xl text-rose-600 hover:bg-rose-50 active:bg-rose-100 transition">
+        <i class="ph-bold ph-trash text-rose-600 text-2xl"></i>
+        <span>Vymazať celý zoznam</span>
+      </button>
+      <div class="border-t border-slate-200 my-1"></div>
+      <button id="logout-btn" type="button" class="w-full flex items-center gap-3 px-4 py-3 text-base font-semibold rounded-xl text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition">
+        <i class="ph-bold ph-sign-out text-slate-500 text-2xl"></i>
+        <span>Odhlásiť sa</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Hlavný obsah so zoznamom -->
+  <main class="flex-1 max-w-md w-full mx-auto px-4 pt-4 pb-36">
+
+    <!-- Filtre: len Na nákup a V košíku -->
+    <div class="flex items-center justify-between mb-4">
+      <div class="inline-flex bg-slate-200/90 p-1.5 rounded-2xl w-full gap-1">
+        <button data-filter="active" type="button" class="filter-tab flex-1 py-2.5 rounded-xl text-center font-bold text-base transition bg-indigo-600 text-white shadow-sm">Na nákup</button>
+        <button data-filter="completed" type="button" class="filter-tab flex-1 py-2.5 rounded-xl text-center font-bold text-base transition text-slate-600 hover:text-slate-900">V košíku</button>
+      </div>
+    </div>
+
+    <!-- Zoznam položiek -->
+    <div id="items-list" class="space-y-3"></div>
+
+    <!-- Prázdny stav -->
+    <div id="empty-state" class="hidden py-16 px-4 text-center">
+      <div class="w-20 h-20 rounded-3xl bg-white border border-slate-200 flex items-center justify-center mx-auto mb-4 text-slate-400 text-4xl shadow-sm">
+        <i class="ph-bold ph-basket"></i>
+      </div>
+      <h3 class="text-lg font-bold text-slate-800 mb-1" id="empty-title">Žiadne položky</h3>
+      <p class="text-sm font-medium text-slate-500 max-w-xs mx-auto" id="empty-desc">Pridaj položky pomocou poľa nižšie.</p>
+    </div>
+
+    <!-- Pätička s podpisom -->
+    <footer class="mt-8 mb-4 text-center">
+      <p class="text-xs font-medium text-slate-400 select-none">
+        Vytvoril Peťko Bezuška :)
+      </p>
+    </footer>
+
+  </main>
+
+  <!-- Spodný panel na pridávanie -->
+  <div class="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 safe-bottom shadow-lg">
+    <div class="max-w-md mx-auto p-4 space-y-2.5">
+      <form id="add-form" class="flex items-center gap-2.5">
+        <div class="relative flex-1">
+          <input 
+            type="text" 
+            id="item-name" 
+            placeholder="Čo treba kúpiť? (napr. rozky 10)" 
+            autocomplete="off"
+            class="w-full bg-slate-100 border border-slate-300 rounded-2xl px-4 py-3.5 text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 transition"
+          >
+        </div>
+
+        <button 
+          type="button" 
+          id="voice-input-btn"
+          title="Diktovať hlasom" 
+          class="w-12 h-12 bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-2xl border border-slate-200 active:bg-slate-200 flex items-center justify-center transition shrink-0"
+        >
+          <i id="voice-icon" class="ph-bold ph-microphone text-2xl"></i>
+        </button>
+
+        <button 
+          type="button" 
+          id="toggle-details-btn"
+          title="Pridať množstvo alebo obchod" 
+          class="w-12 h-12 p-3 bg-slate-100 text-slate-600 hover:text-slate-900 rounded-2xl border border-slate-200 active:bg-slate-200 flex items-center justify-center transition shrink-0"
+        >
+          <i class="ph-bold ph-sliders text-xl"></i>
+        </button>
+
+        <button 
+          type="submit" 
+          id="submit-item-btn"
+          class="w-12 h-12 bg-indigo-600 active:bg-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center shadow-md shadow-indigo-600/30 active:scale-95 transition shrink-0"
+        >
+          <i class="ph-bold ph-plus text-2xl"></i>
+        </button>
+      </form>
+
+      <!-- Doplnkové polia -->
+      <div id="details-row" class="hidden flex items-center gap-2 pt-1 transition-all">
+        <input 
+          type="text" 
+          id="item-amount" 
+          placeholder="Množstvo (napr. 2 ks, 500g)" 
+          class="w-1/2 bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-600"
+        >
+        <input 
+          type="text" 
+          id="item-store" 
+          placeholder="Oddelenie (napr. Zelenina)" 
+          class="w-1/2 bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-600"
+        >
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Dialóg na úpravu položky -->
+  <div id="edit-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-2xl shrink-0">
+          <i class="ph-bold ph-pencil-simple"></i>
+        </div>
+        <div>
+          <h3 class="font-extrabold text-slate-900 text-lg">Upraviť položku</h3>
+          <p class="text-xs font-medium text-slate-500">Zmeň názov alebo množstvo</p>
+        </div>
+      </div>
+
+      <form id="edit-item-form" class="space-y-3">
+        <input type="hidden" id="edit-item-id">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Názov tovaru</label>
+          <input 
+            type="text" 
+            id="edit-item-title" 
+            required
+            class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-3 text-base font-semibold text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-600"
+          >
+        </div>
+        <div class="flex gap-2">
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Množstvo</label>
+            <input 
+              type="text" 
+              id="edit-item-amount" 
+              placeholder="napr. 10 ks"
+              class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-600"
+            >
+          </div>
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Oddelenie</label>
+            <input 
+              type="text" 
+              id="edit-item-store" 
+              placeholder="napr. Pekáreň"
+              class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-600"
+            >
+          </div>
+        </div>
+
+        <div class="flex gap-3 pt-3">
+          <button 
+            type="button" 
+            id="edit-modal-cancel" 
+            class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 text-base font-bold hover:bg-slate-200 active:scale-95 transition"
+          >
+            Zrušiť
+          </button>
+          <button 
+            type="submit" 
+            class="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-base font-bold hover:bg-indigo-700 active:scale-95 transition shadow-md shadow-indigo-600/30"
+          >
+            Uložiť
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Potvrdzovací dialóg -->
+  <div id="modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl max-w-xs w-full p-6 text-center shadow-2xl">
+      <div id="modal-icon-wrapper" class="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3.5 text-3xl">
+        <i class="ph-bold ph-trash"></i>
+      </div>
+      <h3 id="modal-title" class="font-extrabold text-slate-900 text-lg mb-1">Naozaj vymazať?</h3>
+      <p id="modal-desc" class="text-sm font-medium text-slate-500 mb-6">Túto akciu nie je možné vrátiť späť.</p>
+      <div class="flex gap-3">
+        <button id="modal-cancel" type="button" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 text-base font-bold hover:bg-slate-200 active:scale-95 transition">Zrušiť</button>
+        <button id="modal-confirm" type="button" class="flex-1 py-3 rounded-xl bg-rose-600 text-white text-base font-bold hover:bg-rose-700 active:scale-95 transition">Vymazať</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { firebaseConfig } from "./firebase-config.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+    import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+    // Údaje sú vo Firebase (projekt mackine-torty):
+    //   apps/nakup               -> { master: [{key, title}] }   naučené poradie tovaru
+    //   apps/nakup/items/{id}    -> { title, amount, store, completed, pos }
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+    const cfgRef = doc(db, 'apps', 'nakup');
+    const itemsCol = collection(db, 'apps', 'nakup', 'items');
+
+    let items = [];
+    let masterOrder = [];
+    let currentFilter = 'active';
+    let isReorderMode = false;
+    let pendingModalAction = null;
+    let sortableInstance = null;
+    let unsubs = [];
+    let loaded = false;
+    let isDragging = false;
+    let renderPending = false;
+
+    function toast(text) {
+      const el = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = text;
+      el.classList.remove('hidden');
+      clearTimeout(toast.t);
+      toast.t = setTimeout(() => el.classList.add('hidden'), 4000);
+    }
+    function fail(err) {
+      console.error(err);
+      toast('Chyba: ' + ((err && err.code) || (err && err.message) || 'uloženie zlyhalo'));
+    }
+
+    function newId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    function plural(n) {
+      if (n === 1) return 'položka';
+      if (n >= 2 && n <= 4) return 'položky';
+      return 'položiek';
+    }
+
+    // Čistí kľúč od diakritiky aj od čísel/jednotiek na konci, aby "rozky 10" aj "rozky 5" mali rovnaký kľúč "rozky"
+    function normalizeKey(str) {
+      if (!str) return '';
+      let clean = str.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      clean = clean.replace(/[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|g|kg|dkg|l|ml|dcl|bal|balenie)?)$/i, '').trim();
+      return clean;
+    }
+
+    // Automaticky oddelí názov tovaru a číslo/množstvo zadané priamo do hlavného poľa
+    function extractTitleAndAmount(rawTitle, rawAmount) {
+      let title = rawTitle.trim();
+      let amount = (rawAmount || '').trim();
+
+      if (!amount) {
+        const match = title.match(/^(.*?)[\s,]+(\d+(?:[.,]\d+)?\s*(?:ks|g|kg|dkg|l|ml|dcl|bal|balenie)?)$/i);
+        if (match && match[1].trim().length > 0) {
+          title = match[1].trim();
+          amount = match[2].trim();
+          // Ak používateľ zadal len čisté číslo (napr. 10), pridáme "ks" pre prehľadnosť
+          if (/^\d+$/.test(amount)) {
+            amount = amount + ' ks';
+          }
+        }
+      }
+
+      return { title, amount };
+    }
+
+    function saveMasterOrder() {
+      setDoc(cfgRef, { master: masterOrder }, { merge: true }).catch(fail);
+    }
+
+    function rememberTitle(title) {
+      const key = normalizeKey(title);
+      if (key && !masterOrder.some(m => m.key === key)) {
+        masterOrder.push({ key: key, title: title });
+        saveMasterOrder();
+      }
+    }
+
+    function recordCurrentOrderToMaster() {
+      items.forEach(item => {
+        const key = normalizeKey(item.title);
+        if (!key) return;
+        if (!masterOrder.find(m => m.key === key)) {
+          masterOrder.push({ key: key, title: item.title });
+        }
+      });
+
+      const currentActiveKeys = items.map(i => normalizeKey(i.title)).filter(k => k);
+      masterOrder.sort((a, b) => {
+        const idxA = currentActiveKeys.indexOf(a.key);
+        const idxB = currentActiveKeys.indexOf(b.key);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        return 0;
+      });
+
+      saveMasterOrder();
+    }
+
+    function findLearnedInsertIndex(newTitle) {
+      const newKey = normalizeKey(newTitle);
+      if (!newKey) return items.length;
+
+      const masterIndex = masterOrder.findIndex(m => m.key === newKey);
+      if (masterIndex === -1) return items.length;
+
+      for (let i = masterIndex + 1; i < masterOrder.length; i++) {
+        const subsequentKey = masterOrder[i].key;
+        const targetIndex = items.findIndex(item => normalizeKey(item.title) === subsequentKey);
+        if (targetIndex !== -1) return targetIndex;
+      }
+
+      return items.length;
+    }
+
+    // Uloží nové poradie: každá položka dostane pos podľa indexu, zapíšu sa len zmenené
+    function persistOrder(newItems) {
+      const batch = writeBatch(db);
+      let changed = 0;
+      newItems.forEach((it, i) => {
+        const pos = (i + 1) * 1000;
+        if (it.pos !== pos) {
+          it.pos = pos;
+          batch.update(doc(itemsCol, it.id), { pos: pos });
+          changed++;
+        }
+      });
+      items = newItems;
+      if (changed) batch.commit().catch(fail);
+    }
+
+    function addItem() {
+      const nameInput = document.getElementById('item-name');
+      const amountInput = document.getElementById('item-amount');
+      const storeInput = document.getElementById('item-store');
+
+      const rawTitle = nameInput.value.trim();
+      if (!rawTitle) return;
+
+      const parsed = extractTitleAndAmount(rawTitle, amountInput.value);
+      const insertIndex = findLearnedInsertIndex(parsed.title);
+
+      // pos medzi susedmi, aby nebolo treba prečíslovať celý zoznam
+      const before = items[insertIndex - 1];
+      const after = items[insertIndex];
+      let pos;
+      if (!before && !after) pos = 1000;
+      else if (!after) pos = (before.pos || 0) + 1000;
+      else if (!before) pos = (after.pos || 0) - 1000;
+      else pos = ((before.pos || 0) + (after.pos || 0)) / 2;
+
+      const id = newId();
+      setDoc(doc(itemsCol, id), {
+        title: parsed.title,
+        amount: parsed.amount,
+        store: storeInput.value.trim(),
+        completed: false,
+        pos: pos
+      }).catch(fail);
+
+      rememberTitle(parsed.title);
+
+      nameInput.value = '';
+      amountInput.value = '';
+      storeInput.value = '';
+      nameInput.focus();
+    }
+
+    window.toggleComplete = function(id) {
+      const item = items.find(i => i.id === id);
+      if (item) updateDoc(doc(itemsCol, id), { completed: !item.completed }).catch(fail);
+    };
+
+    window.openEditModal = function(id, e) {
+      if (e) e.stopPropagation();
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      document.getElementById('edit-item-id').value = item.id;
+      document.getElementById('edit-item-title').value = item.title;
+      document.getElementById('edit-item-amount').value = item.amount || '';
+      document.getElementById('edit-item-store').value = item.store || '';
+
+      document.getElementById('edit-modal-backdrop').classList.remove('hidden');
+      setTimeout(() => document.getElementById('edit-item-title').focus(), 100);
+    };
+
+    window.closeEditModal = function() {
+      document.getElementById('edit-modal-backdrop').classList.add('hidden');
+    };
+
+    window.deleteItem = function(id, e) {
+      if (e) e.stopPropagation();
+      deleteDoc(doc(itemsCol, id)).catch(fail);
+    };
+
+    function moveItem(id, dir) {
+      const index = items.findIndex(i => i.id === id);
+      const target = index + dir;
+      if (index === -1 || target < 0 || target >= items.length) return;
+      const newItems = items.slice();
+      const temp = newItems[index];
+      newItems[index] = newItems[target];
+      newItems[target] = temp;
+      persistOrder(newItems);
+      recordCurrentOrderToMaster();
+      renderList();
+    }
+    window.moveItemUp = function(id, e) { if (e) e.stopPropagation(); moveItem(id, -1); };
+    window.moveItemDown = function(id, e) { if (e) e.stopPropagation(); moveItem(id, 1); };
+
+    function renderList() {
+      if (isDragging) { renderPending = true; return; }
+
+      const listEl = document.getElementById('items-list');
+      const emptyState = document.getElementById('empty-state');
+      const emptyTitle = document.getElementById('empty-title');
+      const emptyDesc = document.getElementById('empty-desc');
+      const headerCounter = document.getElementById('header-counter');
+
+      const filtered = items.filter(item => currentFilter === 'completed' ? item.completed : !item.completed);
+
+      const activeCount = items.filter(i => !i.completed).length;
+      headerCounter.textContent = loaded ? `${activeCount} ${plural(activeCount)} na nákup` : 'Načítavam…';
+
+      if (!loaded) {
+        listEl.innerHTML = '';
+        emptyState.classList.add('hidden');
+      } else if (filtered.length === 0) {
+        listEl.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        if (currentFilter === 'completed') {
+          emptyTitle.textContent = 'Košík je prázdny';
+          emptyDesc.textContent = 'Zatiaľ si do košíka neodškrtol žiadnu položku.';
+        } else {
+          emptyTitle.textContent = 'Všetko nakúpené!';
+          emptyDesc.textContent = 'Nemáš žiadne čakajúce položky na nákup.';
+        }
+      } else {
+        emptyState.classList.add('hidden');
+        listEl.innerHTML = filtered.map((item) => {
+          const isDone = item.completed;
+          return `
+            <div
+              data-id="${item.id}"
+              class="item-card flex items-center justify-between p-4 rounded-2xl border transition-all duration-150 select-none ${
+                isDone
+                  ? 'bg-slate-50 border-slate-200 opacity-60'
+                  : 'bg-white border-slate-200 shadow-sm active:border-indigo-400'
+              }"
+            >
+              <!-- Zaškrtnutie a Názov položky -->
+              <div class="flex items-center gap-4 flex-1 min-w-0" onclick="window.toggleComplete('${item.id}')">
+                <button
+                  type="button"
+                  class="w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+                    isDone
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : 'border-2 border-slate-400 bg-white text-transparent'
+                  }"
+                >
+                  <i class="ph-bold ph-check text-base"></i>
+                </button>
+
+                <div class="truncate">
+                  <div class="text-lg font-bold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-900'}">
+                    ${escapeHTML(item.title)}
+                  </div>
+                  <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                    ${item.amount ? `<span class="inline-flex items-center text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-200/50">${escapeHTML(item.amount)}</span>` : ''}
+                    ${item.store ? `<span class="inline-flex items-center text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200"><i class="ph-bold ph-map-pin mr-1 text-xs"></i>${escapeHTML(item.store)}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Posúvanie a Zmazanie -->
+              <div class="flex items-center gap-1.5 ml-2 shrink-0">
+                ${isReorderMode ? `
+                  <button type="button" onclick="window.moveItemUp('${item.id}', event)" title="Hore" class="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center active:bg-slate-200">
+                    <i class="ph-bold ph-caret-up text-sm"></i>
+                  </button>
+                  <button type="button" onclick="window.moveItemDown('${item.id}', event)" title="Dole" class="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center active:bg-slate-200">
+                    <i class="ph-bold ph-caret-down text-sm"></i>
+                  </button>
+                ` : ''}
+
+                <!-- Rukoväť na ťahanie -->
+                <div class="drag-handle touch-none w-11 h-11 flex items-center justify-center text-slate-400 hover:text-slate-700 active:text-indigo-600 cursor-grab active:cursor-grabbing">
+                  <i class="ph-bold ph-dots-six-vertical text-2xl"></i>
+                </div>
+
+                <!-- Tlačidlo upraviť -->
+                <button type="button" onclick="window.openEditModal('${item.id}', event)" title="Upraviť" class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-indigo-600 active:text-indigo-600 transition">
+                  <i class="ph-bold ph-pencil-simple text-2xl"></i>
+                </button>
+
+                <!-- Tlačidlo zmazať -->
+                <button type="button" onclick="window.deleteItem('${item.id}', event)" title="Vymazať" class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-rose-600 active:text-rose-600 transition">
+                  <i class="ph-bold ph-trash text-2xl"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      setupSortable();
+    }
+
+    function setupSortable() {
+      const el = document.getElementById('items-list');
+      if (sortableInstance) sortableInstance.destroy();
+
+      sortableInstance = new Sortable(el, {
+        handle: '.drag-handle',
+        animation: 180,
+        ghostClass: 'sortable-ghost',
+        dragClass: 'sortable-drag',
+        delay: 40,
+        delayOnTouchOnly: true,
+        onStart: function () { isDragging = true; },
+        onEnd: function () {
+          isDragging = false;
+          const newOrderedIds = Array.from(el.querySelectorAll('.item-card')).map(elem => elem.getAttribute('data-id'));
+
+          const newItems = [];
+          newOrderedIds.forEach(id => {
+            const found = items.find(i => i.id === id);
+            if (found) newItems.push(found);
+          });
+          items.forEach(it => {
+            if (!newItems.find(n => n.id === it.id)) newItems.push(it);
+          });
+
+          persistOrder(newItems);
+          recordCurrentOrderToMaster();
+          if (renderPending) { renderPending = false; renderList(); }
+        }
+      });
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+      });
+    }
+
+    function showConfirmModal(title, desc, onConfirm) {
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-desc').textContent = desc;
+      pendingModalAction = onConfirm;
+      document.getElementById('modal-backdrop').classList.remove('hidden');
+    }
+
+    function hideModal() {
+      document.getElementById('modal-backdrop').classList.add('hidden');
+      pendingModalAction = null;
+    }
+
+    function deleteMany(list) {
+      // Firestore dávka má limit 500 operácií
+      for (let i = 0; i < list.length; i += 450) {
+        const batch = writeBatch(db);
+        list.slice(i, i + 450).forEach(it => batch.delete(doc(itemsCol, it.id)));
+        batch.commit().catch(fail);
+      }
+    }
+
+    // ---- Firebase: načítanie a živé zmeny ----
+    function start() {
+      if (unsubs.length) return;
+      unsubs.push(onSnapshot(itemsCol, { includeMetadataChanges: true }, function(snap) {
+        const arr = [];
+        snap.forEach(d => { const o = d.data(); o.id = d.id; arr.push(o); });
+        arr.sort((a, b) => (a.pos || 0) - (b.pos || 0) || (a.id < b.id ? -1 : 1));
+        items = arr;
+        loaded = true;
+        document.getElementById('offline-badge').classList.toggle('hidden', !snap.metadata.fromCache);
+        renderList();
+      }, fail));
+      unsubs.push(onSnapshot(cfgRef, function(snap) {
+        masterOrder = (snap.exists() && snap.data().master) || [];
+      }, fail));
+    }
+
+    function stop() {
+      unsubs.forEach(u => u());
+      unsubs = [];
+      items = [];
+      masterOrder = [];
+      loaded = false;
+      renderList();
+    }
+
+    function initAuth() {
+      const lg = document.getElementById('login');
+      const msg = document.getElementById('login-msg');
+      const form = document.getElementById('login-form');
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        msg.textContent = 'Prihlasujem…';
+        signInWithEmailAndPassword(auth, document.getElementById('login-email').value.trim(), document.getElementById('login-pass').value)
+          .catch(() => { msg.textContent = 'Nesprávny e-mail alebo heslo.'; });
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', function() {
+        document.getElementById('more-menu').classList.add('hidden');
+        signOut(auth);
+      });
+
+      onAuthStateChanged(auth, function(u) {
+        if (u) {
+          lg.classList.add('hidden');
+          start();
+        } else {
+          stop();
+          lg.classList.remove('hidden');
+          form.classList.remove('hidden');
+          if (msg.textContent !== 'Nesprávny e-mail alebo heslo.') msg.textContent = 'Prihlás sa.';
+        }
+      });
+    }
+
+    // ---- Ovládanie ----
+    function initUI() {
+      // Hlasové zadávanie (Web Speech API)
+      const voiceBtn = document.getElementById('voice-input-btn');
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'sk-SK';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        let isListening = false;
+
+        voiceBtn.addEventListener('click', function() {
+          if (isListening) { recognition.stop(); return; }
+          try { recognition.start(); } catch (err) { console.error('Speech recognition error:', err); }
+        });
+        recognition.onstart = function() {
+          isListening = true;
+          voiceBtn.classList.remove('bg-slate-100', 'text-slate-600');
+          voiceBtn.classList.add('bg-rose-500', 'text-white', 'animate-pulse');
+        };
+        recognition.onresult = function(event) {
+          const transcript = event.results[0][0].transcript;
+          if (transcript) {
+            document.getElementById('item-name').value = transcript;
+            addItem();
+          }
+        };
+        recognition.onerror = function(event) { console.warn('Speech error:', event.error); };
+        recognition.onend = function() {
+          isListening = false;
+          voiceBtn.classList.remove('bg-rose-500', 'text-white', 'animate-pulse');
+          voiceBtn.classList.add('bg-slate-100', 'text-slate-600');
+        };
+      } else {
+        voiceBtn.style.display = 'none';
+      }
+
+      document.getElementById('add-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        addItem();
+      });
+
+      const detailsRow = document.getElementById('details-row');
+      document.getElementById('toggle-details-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        detailsRow.classList.toggle('hidden');
+        if (!detailsRow.classList.contains('hidden')) document.getElementById('item-amount').focus();
+      });
+
+      document.querySelectorAll('.filter-tab').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+          document.querySelectorAll('.filter-tab').forEach(t => {
+            t.className = 'filter-tab flex-1 py-2.5 rounded-xl text-center font-bold text-base transition text-slate-600 hover:text-slate-900';
+          });
+          e.target.className = 'filter-tab flex-1 py-2.5 rounded-xl text-center font-bold text-base transition bg-indigo-600 text-white shadow-sm';
+          currentFilter = e.target.getAttribute('data-filter');
+          renderList();
+        });
+      });
+
+      const menuBtn = document.getElementById('menu-btn');
+      const moreMenu = document.getElementById('more-menu');
+      menuBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        moreMenu.classList.toggle('hidden');
+      });
+      document.addEventListener('click', function(e) {
+        if (!moreMenu.contains(e.target) && !menuBtn.contains(e.target)) moreMenu.classList.add('hidden');
+      });
+
+      const toggleReorderBtn = document.getElementById('toggle-reorder-btn');
+      toggleReorderBtn.addEventListener('click', function() {
+        isReorderMode = !isReorderMode;
+        toggleReorderBtn.classList.toggle('bg-indigo-600', isReorderMode);
+        toggleReorderBtn.classList.toggle('text-white', isReorderMode);
+        renderList();
+      });
+
+      document.getElementById('clear-completed-btn').addEventListener('click', function() {
+        moreMenu.classList.add('hidden');
+        const done = items.filter(i => i.completed);
+        if (done.length === 0) return;
+        showConfirmModal(
+          'Vyčistiť vybavené položky?',
+          `Odstráni sa ${done.length} ${plural(done.length)}, ktoré už máte v košíku.`,
+          function() { deleteMany(done); }
+        );
+      });
+
+      document.getElementById('clear-all-btn').addEventListener('click', function() {
+        moreMenu.classList.add('hidden');
+        if (items.length === 0) return;
+        showConfirmModal(
+          'Vymazať celý zoznam?',
+          'Všetky položky budú natrvalo odstránené.',
+          function() { deleteMany(items.slice()); }
+        );
+      });
+
+      document.getElementById('modal-confirm').addEventListener('click', function() {
+        if (typeof pendingModalAction === 'function') pendingModalAction();
+        hideModal();
+      });
+      document.getElementById('modal-cancel').addEventListener('click', hideModal);
+
+      // Úprava položky
+      document.getElementById('edit-item-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id = document.getElementById('edit-item-id').value;
+        const newTitle = document.getElementById('edit-item-title').value.trim();
+        if (!newTitle) return;
+        if (items.some(i => i.id === id)) {
+          updateDoc(doc(itemsCol, id), {
+            title: newTitle,
+            amount: document.getElementById('edit-item-amount').value.trim(),
+            store: document.getElementById('edit-item-store').value.trim()
+          }).catch(fail);
+          rememberTitle(newTitle);
+        }
+        window.closeEditModal();
+      });
+      document.getElementById('edit-modal-cancel').addEventListener('click', window.closeEditModal);
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+    initUI();
+    renderList();
+    initAuth();
+  </script>
+</body>
+</html>
