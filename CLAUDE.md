@@ -21,4 +21,4 @@
 - `apps/nakup/items/{id}`: `{title, amount, store, completed, pos}` – každá položka zvlášť (aby sa súbežné zmeny z dvoch mobilov neprepisovali); poradie podľa `pos`.
 
 ## Funkcie
-Pridanie textom alebo hlasom (sk-SK), „rožky 10“ → názov + „10 ks“, množstvo a oddelenie, záložky Na nákup / V košíku, poradie ťahaním alebo šípkami (učí sa), úprava, mazanie, vyčistiť vybavené, vymazať všetko, odhlásenie, značka „offline“.
+Pridanie textom alebo hlasom (sk-SK), „rožky 10“ → názov + „10 ks“, viac položiek naraz („mlieko, chlieb a vajcia 10“), našepkávanie z naučeného tovaru (`master`), lišta Späť (5 s) po odškrtnutí/zmazaní/vyčistení, režim do obchodu (veľké písmo, ťuknutie alebo potiahnutie doprava odškrtne, bez úprav/mazania, displej nezhasína; zapamätá sa v zariadení v localStorage `nakup_shop_mode`), množstvo a oddelenie, záložky Na nákup / V košíku, poradie ťahaním alebo šípkami (učí sa), úprava, mazanie, vyčistiť vybavené, vymazať všetko, odhlásenie, značka „offline“.

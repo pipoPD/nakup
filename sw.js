@@ -1,5 +1,5 @@
 // Service worker: appka sa otvorí aj bez internetu (naposledy načítaná verzia).
-var C = "nk-cache-v1";
+var C = "nk-cache-v2";
 var HOSTS = ["www.gstatic.com", "cdn.tailwindcss.com", "unpkg.com", "cdn.jsdelivr.net"];
 self.addEventListener("install", function () { self.skipWaiting(); });
 self.addEventListener("activate", function (e) {
